@@ -91,10 +91,12 @@ install(){
   rm -rf /tmp/vlanmatrix-dl
   page=$(grep -l VLANMATRIX_V5_PAGE /www/user/user*.asp 2>/dev/null | head -n1)
   echo
-  if [ -n "$old" ]; then echo "VLAN Matrix updated: $old -> $new"; else echo "VLAN Matrix $new installed."; fi
+  if [ -z "$old" ]; then echo "VLAN Matrix $new installed."
+  elif [ "$old" = "$new" ]; then echo "VLAN Matrix $new reinstalled."
+  else echo "VLAN Matrix updated: $old -> $new"; fi
   echo "Open the router page: LAN > VLAN > VLAN Matrix (${page##*/}). Press Ctrl+F5 if the tab is missing."
   [ -f "$ROOT/asus-ports.backup" ] || echo "Tip: run '$ROOT/vm.sh takeover' so ports are configured in one place only."
-  [ -d "$OLD" ] && echo "Leftovers of an older VLAN Matrix found. Delete them with: sh $ROOT/install.sh remove-old"
+  [ -d "$OLD" ] && [ -z "${VM_QUIET_OLD:-}" ] && echo "Leftovers of an older VLAN Matrix found. Delete them with: sh $ROOT/install.sh remove-old"
   return 0
 }
 

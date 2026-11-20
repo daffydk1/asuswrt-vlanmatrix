@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.2.1
+- Fix: VLAN Matrix could take the web page slot of another addon (e.g. Skynet), so that addon's tab opened
+  the wrong page and the router GUI hung. It now never uses a userN.asp slot another tab points to,
+  and moves away from one if it already sits there.
+- Installer says "reinstalled" when the version is unchanged.
+
 ## 5.2.0 – first public release
 Tested on Asuswrt-Merlin 3006.102.9, RT-BE88U, router mode.
 

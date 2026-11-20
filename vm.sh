@@ -14,7 +14,7 @@
 # <cfg> format:  "eth3:main=U,20=T,30=O;eth5:main=O,60=U"   (U=untagged, T=tagged, O=off)
 # Ports not in the setup are never touched (ASUS decides).
 
-VERSION=5.2.0
+VERSION=5.2.1
 PATH=/sbin:/bin:/usr/sbin:/usr/bin; export PATH
 ROOT=/jffs/addons/vlanmatrix
 CONF=$ROOT/ports.conf
@@ -360,18 +360,31 @@ cmd_status(){
 }
 
 # ---------- web page (menu tab) ----------
-webui(){
-  . /usr/sbin/helper.sh
-  # Remove older copies of our page (e.g. after an update) so there is only one tab
+pick_page(){ # our page slot. Never a slot that another addon's menu tab points to (e.g. Skynet).
+  # Our own tab line has already been removed from /tmp/menuTree.js, so any remaining userN.asp entry is someone else's.
+  taken(){ grep -q "url: \"$1\"" /tmp/menuTree.js 2>/dev/null; }
+  keep=none
   for f in /www/user/user*.asp; do
-    [ -f "$f" ] && grep -q VLANMATRIX_V5_PAGE "$f" && ! cmp -s "$f" "$ROOT/vlanmatrix.asp" && rm -f "$f"
+    [ -f "$f" ] && grep -q VLANMATRIX_V5_PAGE "$f" || continue
+    n=${f##*/}
+    if [ "$keep" = none ] && ! taken "$n"; then keep=$n; else rm -f "$f"; log "moved off $n (used by another addon or a duplicate)"; fi
   done
-  am_get_webui_page "$ROOT/vlanmatrix.asp"
-  [ "$am_webui_page" = none ] && { log "no free web page slot"; return 1; }
-  cp -f "$ROOT/vlanmatrix.asp" "/www/user/$am_webui_page"
+  [ "$keep" != none ] && { echo "$keep"; return; }
+  i=1
+  while [ $i -le 20 ]; do
+    n=user$i.asp
+    [ -e "/www/user/$n" ] || taken "$n" || { echo "$n"; return; }
+    i=$((i+1))
+  done
+  echo none
+}
+webui(){
   mkdir -p "$API"
   [ -f /tmp/menuTree.js ] || cp /www/require/modules/menuTree.js /tmp/
   sed -i '/tabName: "VLAN Matrix"/d' /tmp/menuTree.js
+  am_webui_page=$(pick_page)
+  [ "$am_webui_page" = none ] && { log "no free web page slot"; return 1; }
+  cp -f "$ROOT/vlanmatrix.asp" "/www/user/$am_webui_page"
   sed -i 's/{url: "Advanced_VLAN_Profile_Content.asp", tabName: "__INHERIT__"}/{url: "Advanced_VLAN_Profile_Content.asp", tabName: "VLAN Profiles"}/' /tmp/menuTree.js
   sed -i 's#^//\({url: "Advanced_VLAN_Switch_Content.asp"\)#\1#' /tmp/menuTree.js
   [ -f "$TAKEOVER" ] && sed -i 's#^\([[:space:]]*{url: "Advanced_VLAN_Switch_Content.asp"\)#//\1#' /tmp/menuTree.js
