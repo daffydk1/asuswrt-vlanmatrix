@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.2.3
+- VLAN Matrix is now the last tab: VLAN · VLAN Profiles · VLAN Matrix.
+
 ## 5.2.2
 - The ASUS *VLAN* port tab is no longer hidden after `takeover`; tabs are now VLAN · VLAN Matrix · VLAN Profiles.
 
