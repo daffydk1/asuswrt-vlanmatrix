@@ -40,8 +40,10 @@ curl -fsSL https://raw.githubusercontent.com/daffydk1/asuswrt-vlanmatrix/main/in
 /jffs/addons/vlanmatrix/vm.sh takeover
 ```
 
-   Your current ASUS port setup (trunk / access ports) is copied into VLAN Matrix, all ports are set to *Default* in ASUS,
-   the ASUS *VLAN* port tab is hidden and the network restarts once (~30 s). `vm.sh giveback` restores the ASUS settings.
+   Your current ASUS port setup (trunk / access ports) is copied into VLAN Matrix, all ports are set to *Default* in ASUS
+   and the network restarts once (~30 s). `vm.sh giveback` restores the ASUS settings.
+   The ASUS *VLAN* tab stays visible next to *VLAN Matrix*. Ports ticked *Manage* in VLAN Matrix win: a change made to
+   them on the ASUS page is undone at the next network restart, so use the ASUS page to look, or for unmanaged ports.
 
 **Update:** `sh /jffs/addons/vlanmatrix/install.sh update` &nbsp; **Uninstall:** `sh /jffs/addons/vlanmatrix/install.sh uninstall`
 (gives the ports back to ASUS and keeps a copy of your setup in `/jffs/addons/vlanmatrix-ports.conf.saved`).

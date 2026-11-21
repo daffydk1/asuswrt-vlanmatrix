@@ -14,7 +14,7 @@
 # <cfg> format:  "eth3:main=U,20=T,30=O;eth5:main=O,60=U"   (U=untagged, T=tagged, O=off)
 # Ports not in the setup are never touched (ASUS decides).
 
-VERSION=5.2.1
+VERSION=5.2.2
 PATH=/sbin:/bin:/usr/sbin:/usr/bin; export PATH
 ROOT=/jffs/addons/vlanmatrix
 CONF=$ROOT/ports.conf
@@ -386,8 +386,8 @@ webui(){
   [ "$am_webui_page" = none ] && { log "no free web page slot"; return 1; }
   cp -f "$ROOT/vlanmatrix.asp" "/www/user/$am_webui_page"
   sed -i 's/{url: "Advanced_VLAN_Profile_Content.asp", tabName: "__INHERIT__"}/{url: "Advanced_VLAN_Profile_Content.asp", tabName: "VLAN Profiles"}/' /tmp/menuTree.js
-  sed -i 's#^//\({url: "Advanced_VLAN_Switch_Content.asp"\)#\1#' /tmp/menuTree.js
-  [ -f "$TAKEOVER" ] && sed -i 's#^\([[:space:]]*{url: "Advanced_VLAN_Switch_Content.asp"\)#//\1#' /tmp/menuTree.js
+  # The ASUS VLAN port tab stays visible (also after takeover). Un-hide it if an older version hid it.
+  sed -i 's#^//\([[:space:]]*{url: "Advanced_VLAN_Switch_Content.asp"\)#\1#' /tmp/menuTree.js
   sed -i "/url: \"Advanced_VLAN_Profile_Content.asp\"/i {url: \"$am_webui_page\", tabName: \"VLAN Matrix\"}," /tmp/menuTree.js
   # No ASUS VLAN page on this model/mode? Put the tab under Tools instead.
   grep -q 'tabName: "VLAN Matrix"' /tmp/menuTree.js || sed -i "/url: \"Tools_OtherSettings.asp\"/a {url: \"$am_webui_page\", tabName: \"VLAN Matrix\"}," /tmp/menuTree.js

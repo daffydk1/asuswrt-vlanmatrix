@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.2.2
+- The ASUS *VLAN* port tab is no longer hidden after `takeover`; tabs are now VLAN · VLAN Matrix · VLAN Profiles.
+
 ## 5.2.1
 - Fix: VLAN Matrix could take the web page slot of another addon (e.g. Skynet), so that addon's tab opened
   the wrong page and the router GUI hung. It now never uses a userN.asp slot another tab points to,

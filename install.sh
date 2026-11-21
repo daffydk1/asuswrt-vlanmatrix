@@ -110,7 +110,7 @@ uninstall(){
   for p in /www/user/user*.asp; do [ -f "$p" ] && grep -q VLANMATRIX_V5_PAGE "$p" && rm -f "$p"; done
   if [ -f /tmp/menuTree.js ]; then
     sed -i '/tabName: "VLAN Matrix"/d' /tmp/menuTree.js
-    sed -i 's#^//\({url: "Advanced_VLAN_Switch_Content.asp"\)#\1#' /tmp/menuTree.js
+    sed -i 's#^//\([[:space:]]*{url: "Advanced_VLAN_Switch_Content.asp"\)#\1#' /tmp/menuTree.js
     umount /www/require/modules/menuTree.js 2>/dev/null; mount -o bind /tmp/menuTree.js /www/require/modules/menuTree.js
   fi
   [ -f "$ROOT/ports.conf" ] && cp "$ROOT/ports.conf" /jffs/addons/vlanmatrix-ports.conf.saved && echo "Your setup was saved to /jffs/addons/vlanmatrix-ports.conf.saved"
