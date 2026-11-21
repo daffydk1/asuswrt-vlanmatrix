@@ -72,6 +72,13 @@
 #vm .note{background:var(--card);border:1px solid #2a3640;border-radius:12px;padding:10px 14px;display:none;color:#c8d3dc}
 #vm code{background:#0a0f13;padding:2px 6px;border-radius:4px}
 #vm .msg{color:var(--mut);font-size:12px;min-height:16px}
+#vm .nets{display:flex;flex-direction:column;gap:6px}
+#vm .netrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #1a242c}
+#vm .netrow .grow{flex:1;display:flex;flex-direction:column;gap:1px}
+#vm .netrow small{color:var(--mut);font-size:11px}
+#vm .del{height:30px;padding:0 10px;font-size:12px;border:1px solid #5a2a2a;background:transparent;color:#ff9b9b}
+#vm .addnet{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:8px;border-top:1px solid #1a242c}
+#vm .addnet input[type=number]{width:90px;height:32px;border-radius:8px;border:1px solid #2a3640;background:var(--bg);color:var(--txt);padding:0 8px;font:13px Inter,"Segoe UI",system-ui,sans-serif}
 </style>
 </head>
 <body onload="initial();" class="bg">
@@ -107,6 +114,19 @@
  <div class="bar" id="vm-bar">
   <div id="vm-chg" class="mut">No changes</div>
   <div style="display:flex;gap:8px"><button type="button" class="ghost" id="vm-discard" disabled>Discard</button><button type="button" class="pri" id="vm-go" disabled>Test for 5 min</button></div>
+ </div>
+ <div class="card" id="vm-nets">
+  <b>Networks (VLAN profiles)</b>
+  <div class="nets" id="vm-netlist"></div>
+  <div class="addnet">
+   <label for="vm-newvid" class="mut" style="font-size:12px">New VLAN ID</label>
+   <input type="number" id="vm-newvid" min="3" max="4093" placeholder="3–4093">
+   <label class="sw"><input type="checkbox" id="vm-newiso"> Isolate devices from each other</label>
+   <button type="button" class="pri" id="vm-addnet">Add network</button>
+  </div>
+  <div class="help">Networks are created and deleted with the ASUS VLAN Profiles logic: the subnet is chosen automatically
+   (192.168.&lt;VLAN ID&gt;.1/24 for IDs up to 254) with DHCP. The router restarts its network and Wi-Fi (about 1 minute).
+   Wi-Fi names (SSIDs) for a network are set on the ASUS VLAN Profiles tab. A new network is Tagged on all ports until you change it.</div>
  </div>
  <div class="warn" id="vm-warn"></div>
  <div class="note" id="vm-asus"><b>ASUS' own VLAN port page is still active.</b> For one place to configure ports, run <code>/jffs/addons/vlanmatrix/vm.sh takeover</code> (your current setup is kept).</div>
@@ -183,7 +203,7 @@ function drawEdit(){
  $id('vm-devs').innerHTML='<b>Devices on '+p.label+'</b>'+(cl.length?cl.map(function(x){return '<div class="dev" title="'+esc(x.mac)+'"><span>'+esc(x.name?x.name+' · ':'')+esc(x.ip||x.mac)+'</span><span class="mut">'+esc(x.net)+' · '+esc(x.mac)+'</span></div>';}).join(''):'<div class="mut">'+(p.link=='up'?'No devices seen':'No cable')+'</div>');
 }
 function draw(){
- drawPanel(); drawEdit();
+ drawPanel(); drawEdit(); drawNets();
  var ch=[];S.ports.forEach(function(p){var d=diffs(p);if(d.length)ch.push(p.label+': '+d.join(', '));});
  $id('vm-chg').innerHTML=ch.length?'<b style="color:var(--amber)">'+ch.length+' port'+(ch.length>1?'s':'')+' changed</b> <span class="mut">· '+esc(ch.join(' · '))+'</span>':'No changes';
  $id('vm-go').disabled=!ch.length||busy||S.test.active;
@@ -237,6 +257,51 @@ $id('vm-keep').onclick=function(){send('confirm');};
 $id('vm-undo').onclick=function(){send('rollback');};
 $id('vm-discard').onclick=function(){edit={};mg={};S.ports.forEach(function(p){mg[p.if]=p.managed;});msg('Changes discarded');draw();};
 setInterval(function(){if(S&&!busy&&document.visibilityState=='visible')send('refresh',undefined,true);},15000);
+// ---- Networks: create / delete through the ASUS VLAN Profiles page (hidden), so the data is written exactly as ASUS does
+function drawNets(){
+ var h=S.vlans.length?'':'<div class="mut">No VLAN networks yet.</div>';
+ S.vlans.forEach(function(v){var k=String(v.vid),users=S.ports.filter(function(p){var c=p.saved?parseLine(p.saved):{};return c[k]=='U'||c[k]=='T';}).map(function(p){return p.label;});
+  h+='<div class="netrow"><i class="sq" style="background:'+netColor(k)+'"></i><span class="grow"><b>VLAN '+k+'</b><small>'+esc(v.ip||v.br)+(users.length?' · used on '+esc(users.join(', ')):'')+'</small></span>'+
+   '<button type="button" class="del" data-del="'+k+'"'+(busy||S.test.active?' disabled':'')+'>Delete</button></div>';});
+ $id('vm-netlist').innerHTML=h;
+ $id('vm-addnet').disabled=busy||S.test.active;
+}
+function asusProfiles(run){ // load the ASUS page invisibly and hand its window to run(w)
+ var f=document.createElement('iframe'); f.style.cssText='position:absolute;width:1px;height:1px;left:-9999px;border:0'; f.setAttribute('aria-hidden','true');
+ var t0=Date.now(), done=false;
+ function finish(err){if(done)return;done=true;setTimeout(function(){f.remove();},120000);if(err){busy=false;msg(err);draw();}}
+ f.onload=function(){(function wait(){var w=f.contentWindow;
+   if(w&&w.document&&w.document.getElementById('edit_vid')&&typeof w.addRow_Group=='function'){
+    w.alert=function(m){finish('ASUS refused: '+m);}; w.confirm=function(){return true;};
+    var api=w.httpApi, orig=api.nvramSet;
+    api.nvramSet=function(obj,cb){orig.call(api,obj,function(){});
+     msg('Saved. The router restarts its network and Wi-Fi – this page reloads in about a minute…');
+     setTimeout(function(){location.reload();},75000);};
+    try{run(w);}catch(e){finish('Error: '+e.message);}
+   } else if(Date.now()-t0<20000) setTimeout(wait,300); else finish('Could not open the ASUS VLAN Profiles page.');})();};
+ f.src='/Advanced_VLAN_Profile_Content.asp';
+ document.body.appendChild(f);
+}
+$id('vm-addnet').onclick=function(){
+ var vid=parseInt($id('vm-newvid').value,10);
+ if(!(vid>=3&&vid<=4093)){msg('VLAN ID must be 3–4093.');return;}
+ if(S.vlans.some(function(v){return v.vid==vid;})){msg('VLAN '+vid+' already exists.');return;}
+ if(!confirm('Create VLAN '+vid+'?\nThe router restarts its network and Wi-Fi (about 1 minute).'))return;
+ busy=true;draw();msg('Creating VLAN '+vid+'…');
+ asusProfiles(function(w){w.document.getElementById('edit_vid').value=vid;w.document.getElementById('iso_checkbox').checked=$id('vm-newiso').checked;w.addRow_Group(w.sdn_maximum);});
+};
+$id('vm-netlist').addEventListener('click',function(ev){
+ var b=ev.target.closest('button[data-del]'); if(!b||b.disabled)return;
+ var vid=b.getAttribute('data-del');
+ if(!confirm('Delete VLAN '+vid+'?\nIts Wi-Fi names (if any) are deleted too, and ports lose this network.\nThe router restarts its network (about 1 minute).'))return;
+ busy=true;draw();msg('Deleting VLAN '+vid+'…');
+ asusProfiles(function(w){
+  var rows=w.document.querySelectorAll('#table_vlanProfile tr'),btn=null;
+  for(var i=0;i<rows.length;i++){var c=rows[i].children;if(c.length>1&&c[1].textContent.trim()===String(vid)){btn=rows[i].querySelector('input[onclick*="del_Row"],.remove_btn');break;}}
+  if(!btn)throw Error('VLAN '+vid+' not found on the ASUS page');
+  w.del_Row(btn);});
+});
+
 function initial(){
  if(typeof show_menu==='function')show_menu();
  load().then(function(s){adopt(s);send('refresh',undefined,true);}).catch(function(){send('refresh');});

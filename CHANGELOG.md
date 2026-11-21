@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.3.0
+- Create and delete VLAN networks (VLAN profiles) from VLAN Matrix. It drives the ASUS VLAN Profiles page in the
+  background, so the data (SDN profile, VLAN, subnet + DHCP) is written exactly as ASUS does. Wi-Fi names stay on the ASUS page.
+
 ## 5.2.3
 - VLAN Matrix is now the last tab: VLAN · VLAN Profiles · VLAN Matrix.
 

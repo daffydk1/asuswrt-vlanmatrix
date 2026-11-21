@@ -14,7 +14,7 @@
 # <cfg> format:  "eth3:main=U,20=T,30=O;eth5:main=O,60=U"   (U=untagged, T=tagged, O=off)
 # Ports not in the setup are never touched (ASUS decides).
 
-VERSION=5.2.3
+VERSION=5.3.0
 PATH=/sbin:/bin:/usr/sbin:/usr/bin; export PATH
 ROOT=/jffs/addons/vlanmatrix
 CONF=$ROOT/ports.conf

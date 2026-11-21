@@ -55,6 +55,11 @@ curl -fsSL https://raw.githubusercontent.com/daffydk1/asuswrt-vlanmatrix/main/in
 3. Choose Untagged / Tagged / Off per network. Only one network can be untagged on a port.
 4. **Test for 5 min**, check that everything works, then **Keep** – or do nothing and it reverts by itself.
 
+**Networks.** Below the editor you can add a VLAN network (VLAN ID, optional isolation) or delete one. VLAN Matrix uses the
+ASUS VLAN Profiles page for this in the background, so subnet and DHCP are set up exactly as ASUS would
+(192.168.&lt;VLAN ID&gt;.1/24 for IDs up to 254). The router restarts its network and Wi-Fi (about a minute). Wi-Fi names
+(SSIDs) for a network are still set on the ASUS *VLAN Profiles* tab.
+
 When a port's untagged network changes, VLAN Matrix switches the port off for 3 seconds, so the device on it asks for a new
 IP address straight away (no need to unplug the cable).
 
