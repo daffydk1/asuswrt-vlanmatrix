@@ -72,6 +72,10 @@
 #vm .note{background:var(--card);border:1px solid #2a3640;border-radius:12px;padding:10px 14px;display:none;color:#c8d3dc}
 #vm code{background:#0a0f13;padding:2px 6px;border-radius:4px}
 #vm .msg{color:var(--mut);font-size:12px;min-height:16px}
+#vm-wait{position:fixed;inset:0;background:rgba(5,9,12,.82);z-index:9999;display:none;align-items:center;justify-content:center;font:14px Inter,"Segoe UI",system-ui,sans-serif;color:#e6edf3}
+#vm-wait div{background:#131c23;border:1px solid #2a3640;border-radius:14px;padding:24px 28px;max-width:420px;text-align:center;display:flex;flex-direction:column;gap:10px}
+#vm-wait b{font-size:16px}
+#vm-wait span{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
 #vm .nets{display:flex;flex-direction:column;gap:6px}
 #vm .netrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #1a242c}
 #vm .netrow .grow{flex:1;display:flex;flex-direction:column;gap:1px}
@@ -139,6 +143,7 @@
 </td><td width="10" align="center" valign="top">&nbsp;</td></tr>
 </table>
 <div id="footer"></div>
+<div id="vm-wait" role="status" aria-live="polite"><div><b id="vm-wait-t">Saving…</b><span id="vm-wait-s">0</span><small id="vm-wait-m" style="color:#8b9aa8">The router restarts its network and Wi-Fi. This page reloads by itself when the router answers again. You may have to log in again.</small></div></div>
 <script>
 var COLORS=['#5aa9f0','#a78bfa','#f59e5b','#4cc38a','#f472b6','#e7d24a','#5fd3d3','#ff8a80','#b5d36a','#c49cff'];
 var N={U:'Untagged',T:'Tagged',O:'Off'};
@@ -274,13 +279,25 @@ function asusProfiles(run){ // load the ASUS page invisibly and hand its window 
    if(w&&w.document&&w.document.getElementById('edit_vid')&&typeof w.addRow_Group=='function'){
     w.alert=function(m){finish('ASUS refused: '+m);}; w.confirm=function(){return true;};
     var api=w.httpApi, orig=api.nvramSet;
-    api.nvramSet=function(obj,cb){orig.call(api,obj,function(){});
-     msg('Saved. The router restarts its network and Wi-Fi – this page reloads in about a minute…');
-     setTimeout(function(){location.reload();},75000);};
+    api.nvramSet=function(obj,cb){orig.call(api,obj,function(){}); waitForRouter();};
     try{run(w);}catch(e){finish('Error: '+e.message);}
    } else if(Date.now()-t0<20000) setTimeout(wait,300); else finish('Could not open the ASUS VLAN Profiles page.');})();};
  f.src='/Advanced_VLAN_Profile_Content.asp';
  document.body.appendChild(f);
+}
+function waitForRouter(){ // overlay + reload only when the web server answers again (it restarts with the network)
+ var o=$id('vm-wait'), s=$id('vm-wait-s'), t0=Date.now(), seen_down=false;
+ $id('vm-wait-t').textContent='Saved – the router is restarting its network'; o.style.display='flex';
+ var tick=setInterval(function(){s.textContent=Math.round((Date.now()-t0)/1000)+' s';},1000);
+ (function poll(){setTimeout(function(){
+  var ctl=new AbortController(), to=setTimeout(function(){ctl.abort();},4000);
+  fetch('/user/vlanmatrix/status.json?'+Date.now(),{cache:'no-store',credentials:'same-origin',signal:ctl.signal}).then(function(r){
+   clearTimeout(to);
+   // up again: after it was down once, or in any case after 45 s (the restart can be too quick to notice)
+   if(seen_down||Date.now()-t0>45000){clearInterval(tick);$id('vm-wait-t').textContent='The router is back – reloading';setTimeout(function(){location.reload();},3000);}
+   else poll();
+  }).catch(function(){clearTimeout(to);seen_down=true;if(Date.now()-t0<300000)poll();else{clearInterval(tick);$id('vm-wait-t').textContent='The router does not answer yet – reload the page by hand';}});
+ },Date.now()-t0<10000?10000:3000);})();
 }
 $id('vm-addnet').onclick=function(){
  var vid=parseInt($id('vm-newvid').value,10);

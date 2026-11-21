@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.3.1
+- After creating or deleting a network, a waiting screen counts up and the page reloads only when the router answers
+  again (no "connection refused" page). You may have to log in again.
+
 ## 5.3.0
 - Create and delete VLAN networks (VLAN profiles) from VLAN Matrix. It drives the ASUS VLAN Profiles page in the
   background, so the data (SDN profile, VLAN, subnet + DHCP) is written exactly as ASUS does. Wi-Fi names stay on the ASUS page.
