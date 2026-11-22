@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.4.0
+- **AiMesh wired backhaul protection.** If an AiMesh node is seen behind a LAN port, that port is locked at the ASUS
+  default (Main untagged, all VLANs tagged) – like the WAN port it is never changed and shown as "AiMesh" in the GUI.
+  The lock is remembered (also while the node is off); `vm.sh protect ethX` / `vm.sh unprotect ethX` set or clear it by hand.
+- *Takeover* now resets only this router's own ASUS port settings. AiMesh nodes keep theirs.
+
 ## 5.3.1
 - After creating or deleting a network, a waiting screen counts up and the page reloads only when the router answers
   again (no "connection refused" page). You may have to log in again.

@@ -8,13 +8,14 @@
 #   vm.sh rollback           undo the test setup now
 #   vm.sh status             write status.json for the web page and print it
 #   vm.sh takeover|giveback  let VLAN Matrix replace the ASUS port page / give it back
+#   vm.sh protect|unprotect ethX  lock a port (e.g. AiMesh backhaul) / remove the lock
 #   vm.sh boot               called from services-start
 #   vm.sh event[-end] A B    called from service-event / service-event-end
 #
 # <cfg> format:  "eth3:main=U,20=T,30=O;eth5:main=O,60=U"   (U=untagged, T=tagged, O=off)
 # Ports not in the setup are never touched (ASUS decides).
 
-VERSION=5.3.1
+VERSION=5.4.0
 PATH=/sbin:/bin:/usr/sbin:/usr/bin; export PATH
 ROOT=/jffs/addons/vlanmatrix
 CONF=$ROOT/ports.conf
@@ -26,6 +27,7 @@ API=/www/user/vlanmatrix
 LOG=$ROOT/vlanmatrix.log
 LOCK=/tmp/vlanmatrix.lock
 TEST_SECONDS=300
+BH=$ROOT/backhaul           # locked ports: "ethX <node-mac>|manual" (AiMesh wired backhaul)
 umask 022
 
 log(){ echo "$(date '+%F %T') $*" >> "$LOG"; logger -t vlanmatrix "$*" 2>/dev/null; }
@@ -49,7 +51,11 @@ port_map(){
 }
 wan_ifaces(){ for k in wan_ifnames wan_ifname wan0_ifname wan1_ifname wans_dualwan_ifnames; do nvram get $k 2>/dev/null; done | tr ' ' '\n' | grep -E '^eth[0-9]+$' | sort -u; }
 is_wan(){ wan_ifaces | grep -qx "$1"; }
-managed_ifaces(){ port_map | awk -v w=" $(wan_ifaces | tr '\n' ' ') " 'index(w, " "$2" ")==0{print $2}'; }
+# AiMesh: a LAN port that carries a wired backhaul must stay at ASUS Default (Main untagged +
+# all VLANs tagged). Such ports are locked like WAN: never changed, never offered in the GUI.
+protected_ifaces(){ [ -f "$BH" ] && awk '$1~/^eth[0-9]+$/{print $1}' "$BH" | sort -u; }
+is_protected(){ protected_ifaces | grep -qx "$1"; }
+managed_ifaces(){ port_map | awk -v w=" $(wan_ifaces | tr '\n' ' ') $(protected_ifaces | tr '\n' ' ') " 'index(w, " "$2" ")==0{print $2}'; }
 is_managed(){ managed_ifaces | grep -qx "$1"; }
 
 # ---------- lock ----------
@@ -94,6 +100,51 @@ discover(){
 bridge_of(){ awk -v v="$1" '$1==v{print $2}' "$STATE/vidmap"; }
 vids(){ awk '{print $1}' "$STATE/vidmap"; }
 
+# ---------- AiMesh wired backhaul ----------
+node_macs(){ nvram get cfg_device_list 2>/dev/null | tr '<' '\n' | awk -F'>' 'NF>=4 && $4=="0"{print tolower($3)}'; }
+own_mac(){
+  m=$(nvram get cfg_device_list 2>/dev/null | tr '<' '\n' | awk -F'>' 'NF>=4 && $4=="1"{print $3; exit}')
+  [ -n "$m" ] || m=$(nvram get lan_hwaddr 2>/dev/null)
+  echo "$m" | tr a-f A-F
+}
+detect_backhaul(){
+  # A node's MACs share the first 5 bytes. If one is learned behind a LAN port (not a wds/Wi-Fi
+  # link), that port is a wired backhaul. Remembered in $BH, so the lock stays while the node is off.
+  nm=$(node_macs); [ -n "$nm" ] || return 0
+  pre=" $(echo "$nm" | sed 's/:[^:]*$//' | sort -u | tr '\n' ' ')"
+  { echo br0; awk '{print $2}' "$STATE/vidmap" 2>/dev/null; } | sort -u | while read br; do
+    [ -d "/sys/class/net/$br/brif" ] || continue
+    for i in /sys/class/net/$br/brif/*; do echo "$(printf '%d' "$(cat "$i/port_no")") ${i##*/}"; done > "$STATE/bhports"
+    brctl showmacs "$br" 2>/dev/null | awk -v pre="$pre" 'NR>1 && $3=="no"{m=tolower($2); p=m; sub(/:[^:]*$/,"",p); if(index(pre," "p" "))print $1, m}' |
+    while read pn mac; do
+      ifc=$(awk -v n="$pn" '$1==n{print $2}' "$STATE/bhports"); p=${ifc%%.*}
+      case "$p" in eth[0-9]*) ;; *) continue;; esac
+      port_map | awk '{print $2}' | grep -qx "$p" || continue
+      is_wan "$p" && continue
+      is_protected "$p" && continue
+      echo "$p $mac" >> "$BH"; log "AiMesh node $mac found on $p (wired backhaul) - port locked at ASUS Default"
+    done
+  done
+  rm -f "$STATE/bhports"
+}
+cmd_protect(){
+  echo "$1" | grep -qE '^eth[0-9]+$' || die "usage: vm.sh protect ethX"
+  is_protected "$1" && { say "$1 is already locked"; return 0; }
+  echo "$1 manual" >> "$BH"; say "$1 locked - VLAN Matrix will not touch it"
+}
+cmd_unprotect(){
+  is_protected "$1" || { say "$1 is not locked"; return 0; }
+  grep -v "^$1 " "$BH" > "$BH.tmp"; mv "$BH.tmp" "$BH"; [ -s "$BH" ] || rm -f "$BH"
+  say "$1 unlocked (it is locked again automatically if an AiMesh node is seen on it)"
+}
+mesh_filter(){ # value mode -> keep other AiMesh units' entries; strip (dut list) or drop (trunk list) our own
+  printf '%s' "$1" | awk -v own="$(own_mac)" -v mode="$2" 'BEGIN{RS="<";ORS=""}
+    NR==1{if(mode=="strip")print;next}
+    {split($0,f,">"); m=toupper(f[1]); mac=(m ~ /^[0-9A-F][0-9A-F](:[0-9A-F][0-9A-F])+$/ && length(m)==17)
+     if(mac && m!=own){print "<" $0; next}
+     if(mode=="strip"){ if(match($0,/^[^>]*>[0-9]+>/)) print "<" substr($0,1,RLENGTH); else print "<" $0 } }'
+}
+
 # ---------- changes ----------
 bounce(){ # Simulate unplug/replug so the device on the port asks for a new IP address
   if ethctl "$1" phy-power down >/dev/null 2>&1; then
@@ -125,6 +176,7 @@ ensure_sub(){ # port vid  (VLAN interfaces are NEVER deleted: Broadcom kernels c
 apply_line(){
   set -- $1
   p=$1; shift
+  is_protected "$p" && { logonce "skip $p (AiMesh backhaul - locked at ASUS Default)"; return; }
   is_managed "$p" || { logonce "skip $p (not a managed port)"; return; }
   exists "$p" || { logonce "skip $p (does not exist)"; return; }
   # Which network is the port untagged in? Default: unchanged.
@@ -161,6 +213,7 @@ active_conf(){ if [ -f "$TESTCONF" ]; then echo "$TESTCONF"; else echo "$CONF"; 
 do_apply(){
   trimlog
   discover
+  detect_backhaul
   f=$(active_conf)
   [ -f "$f" ] || return 0
   rm -f "$STATE/flush"
@@ -273,7 +326,7 @@ collect_clients(){ # -> $STATE/clients: "port net ip mac name"
     for i in /sys/class/net/$br/brif/*; do echo "$(printf '%d' "$(cat "$i/port_no")") ${i##*/}" >> "$STATE/portno"; done
     brctl showmacs "$br" 2>/dev/null | awk 'NR>1 && $3=="no"{print $1, tolower($2)}' | while read pn mac; do
       ifc=$(awk -v n="$pn" '$1==n{print $2}' "$STATE/portno"); p=${ifc%%.*}
-      is_managed "$p" || continue
+      { is_managed "$p" || is_protected "$p"; } || continue
           # All complete ARP entries (flag 0x2) - a device can have several, e.g. static IP + DHCP lease
       ip=$(awk -v m="$mac" -v b="$br" 'NR>1 && tolower($4)==m && $6==b && $3!="0x0"{print $1}' /proc/net/arp | sort -t. -k4,4n | tr '\n' ' ' | sed 's/ $//; s/ /, /g')
       [ -n "$ip" ] || ip=$(awk -v m="$mac" '$1==m{print $2; exit}' "$STATE/leases")
@@ -293,6 +346,7 @@ TAKEOVER=$ROOT/asus-ports.backup
 cmd_takeover(){
   [ -f "$TAKEOVER" ] && { say "VLAN Matrix already controls the ports"; return 0; }
   discover
+  detect_backhaul
   # 1) Copy the current ASUS port setup into ports.conf, so nothing changes
   touch "$CONF"
   for p in $(managed_ifaces); do
@@ -307,9 +361,10 @@ cmd_takeover(){
   done
   # 2) Save the ASUS port settings and set every LAN port to Default
   nvram show 2>/dev/null | grep -E '^(vlan_trunklist|apg[0-9]+_dut_list)=' > "$TAKEOVER.tmp" && mv "$TAKEOVER.tmp" "$TAKEOVER"
-  nvram set vlan_trunklist=""
-  grep '^apg' "$TAKEOVER" | while IFS='=' read -r k v; do
-    nv=$(echo "$v" | sed -E 's/(<[^>]*>[0-9]+>)[^<]*/\1/g'); [ "$nv" != "$v" ] && nvram set "$k=$nv"
+  # Only this router's own entries are reset; AiMesh nodes keep their ASUS port settings.
+  grep -E '^(vlan_trunklist|apg[0-9]+_dut_list)=' "$TAKEOVER" | while IFS='=' read -r k v; do
+    case "$k" in vlan_trunklist) nv=$(mesh_filter "$v" drop);; *) nv=$(mesh_filter "$v" strip);; esac
+    [ "$nv" != "$v" ] && nvram set "$k=$nv"
   done
   nvram commit
   say "VLAN Matrix now controls the LAN ports. ASUS port settings saved; restarting network"
@@ -326,6 +381,7 @@ cmd_giveback(){
 # ---------- status for the web page ----------
 cmd_status(){
   discover
+  detect_backhaul
   collect_clients
   mkdir -p "$API"
   now=$(date +%s)
@@ -345,6 +401,7 @@ cmd_status(){
     port_map | while read label p kind; do
       exists "$p" || continue
       echo "$W" | grep -qx "$p" && kind=wan
+      is_protected "$p" && ! echo "$W" | grep -qx "$p" && kind=backhaul
       link=$(cat "/sys/class/net/$p/operstate" 2>/dev/null)
       spd=$(cat "/sys/class/net/$p/speed" 2>/dev/null); case "$spd" in ''|-*|*[!0-9]*) spd=0;; esac
       live=$(live_state "$p" | sed 's/\([a-z0-9]*\)=\([UTO]\)/"\1":"\2"/g; s/ /,/g')
@@ -352,7 +409,7 @@ cmd_status(){
       saved=$(grep "^$p " "$CONF" 2>/dev/null | cut -d' ' -f2- )
       test=$(grep "^$p " "$TESTCONF" 2>/dev/null | cut -d' ' -f2- )
       printf '%s{"label":"%s","if":"%s","kind":"%s","link":"%s","speed":%s,"live":{%s},"clients":[%s],"saved":"%s","test":"%s","managed":%s}' \
-        "$sep" "$label" "$p" "${kind:-rj45}" "$link" "$spd" "$live" "$cl" "$saved" "$test" "$( { [ -n "$saved" ] || [ -n "$test" ]; } && echo true || echo false)"
+        "$sep" "$label" "$p" "${kind:-rj45}" "$link" "$spd" "$live" "$cl" "$saved" "$test" "$( { [ "$kind" != backhaul ] && { [ -n "$saved" ] || [ -n "$test" ]; }; } && echo true || echo false)"
       sep=,
     done
     printf ']}\n'
@@ -432,6 +489,8 @@ case "${1:-}" in
   webui)    webui;;
   takeover) lock; cmd_takeover; webui; cmd_status;;
   giveback) lock; cmd_giveback; webui; cmd_status;;
+  protect)   lock; cmd_protect "${2:-}"; cmd_status;;
+  unprotect) lock; cmd_unprotect "${2:-}"; cmd_status;;
   boot)
     rm -f "$TESTCONF" "$SNAP" "$DEADLINE"   # a test never survives a reboot
     [ -f "$LOG" ] && tail -n 500 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"

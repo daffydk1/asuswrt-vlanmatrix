@@ -165,7 +165,8 @@ function diffs(p){
  if(edit[p.if]){var b=base(p),e=edit[p.if];keys().forEach(function(k){if(b[k]!==e[k])out.push(netName(k)+' → '+N[e[k]]);});}
  return out;}
 function changed(){return S.ports.some(function(p){return diffs(p).length>0;});}
-function lan(){return S.ports.filter(function(p){return p.kind!='wan';});}
+function locked(p){return p.kind=='wan'||p.kind=='backhaul';}
+function lan(){return S.ports.filter(function(p){return !locked(p);});}
 function shown(p){return mg[p.if]?cur(p):p.live;}
 
 function drawPanel(){
@@ -174,15 +175,16 @@ function drawPanel(){
   var v=shown(p),led='#2a3640',bars='';
   keys().forEach(function(k){if(v[k]=='U')led=netColor(k);if(v[k]=='T')bars+='<span style="background:'+netColor(k)+'"></span>';});
   if(p.kind=='wan'){led='#d6dde3';bars='';}
+  if(p.kind=='backhaul'){led='#9fc3e6';bars='';}
   if(p.link!='up')led='#2a3640';
   var sp=p.speed?(p.speed>=1000?p.speed/1000+'G':p.speed+'M'):'';
-  var wan=p.kind=='wan';
-  h+='<button type="button" class="port'+(p.if==sel?' sel':'')+(p.link!='up'?' down':'')+(wan?' wan':'')+'" data-p="'+p.if+'" aria-label="'+p.label+(wan?' (WAN)':'')+'"'+(wan?' disabled title="Used as WAN – not managed"':'')+'>'+
+  var wan=locked(p), bh=p.kind=='backhaul';
+  h+='<button type="button" class="port'+(p.if==sel?' sel':'')+(p.link!='up'?' down':'')+(wan?' wan':'')+'" data-p="'+p.if+'" aria-label="'+p.label+(bh?' (AiMesh backhaul)':wan?' (WAN)':'')+'"'+(bh?' disabled title="AiMesh wired backhaul – kept at ASUS Default, not managed"':wan?' disabled title="Used as WAN – not managed"':'')+'>'+
    '<span class="led" style="background:'+led+';box-shadow:0 0 8px '+led+'"></span>'+
    '<span class="jack'+(p.kind=='sfp'?' sfp':'')+'"><i></i></span>'+
    '<span class="bars">'+bars+'</span>'+
    '<span class="plabel">'+p.label+(diffs(p).length?'<span class="pend"></span>':'')+'</span>'+
-   '<span class="mut">'+(wan?'WAN':(p.link=='up'?sp:'no cable'))+'</span></button>';});
+   '<span class="mut">'+(bh?'AiMesh':wan?'WAN':(p.link=='up'?sp:'no cable'))+'</span></button>';});
  $id('vm-panel').innerHTML=h;
  $id('vm-legend').innerHTML='<span>Light = untagged</span><span>Bars = tagged</span>'+keys().map(function(k){return '<span><i class="sq" style="background:'+netColor(k)+'"></i>'+netName(k)+'</span>';}).join('');
 }
@@ -236,7 +238,7 @@ $id('vm').addEventListener('change',function(ev){
 function cfg(){return lan().filter(function(p){return mg[p.if];}).map(function(p){var c=cur(p);return p.if+':'+keys().map(function(k){return k+'='+c[k];}).join(',');}).join(';');}
 function load(){return fetch('/user/vlanmatrix/status.json?'+Date.now(),{credentials:'same-origin'}).then(function(r){if(!r.ok)throw Error('status '+r.status);return r.json();});}
 function adopt(s){S=s;mg={};edit={};S.ports.forEach(function(p){mg[p.if]=p.managed;});
- if(!sel||!port(sel)||port(sel).kind=='wan')sel=(lan().filter(function(p){return p.managed;})[0]||lan()[0]).if;
+ if(!sel||!port(sel)||locked(port(sel)))sel=(lan().filter(function(p){return p.managed;})[0]||lan()[0]).if;
  leftAt=s.test.active?Date.now()+s.test.left*1000:0;if(s.msg)msg(s.msg);draw();tick();}
 function tick(){clearInterval(timer);if(!leftAt)return;timer=setInterval(function(){
  var l=Math.max(0,Math.round((leftAt-Date.now())/1000));$id('vm-left').textContent=Math.floor(l/60)+':'+('0'+l%60).slice(-2);

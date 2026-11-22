@@ -20,7 +20,7 @@ The stock ASUS VLAN page only offers *Default*, *Access* (one VLAN) or *Trunk* (
 - **Devices per port** – name, IP address(es), network and MAC of what is plugged in.
 - **New IP straight away** – when a port's untagged network changes, the port is switched off for 3 seconds so the
   device asks for a new address (no need to unplug the cable).
-- **Plays nicely** – the WAN port is detected and never touched; other addons' pages (e.g. Skynet) are left alone.
+- **Plays nicely** – the WAN port and AiMesh wired backhaul ports are detected and never touched; other addons' pages (e.g. Skynet) are left alone.
 - **Small** – one shell script and one web page. No Entware.
 
 Tabs on the router: **LAN → VLAN · VLAN Profiles · VLAN Matrix**.
@@ -99,6 +99,7 @@ $vm test "eth3:main=U,20=T,30=O"   # try a setup (reverts after 5 min)
 $vm confirm                        # keep it
 $vm rollback                       # undo now
 $vm takeover | giveback            # take over the ASUS port settings / give them back
+$vm protect | unprotect eth5       # lock a port by hand (e.g. AiMesh backhaul) / unlock it
 ```
 
 Saved setup: `/jffs/addons/vlanmatrix/ports.conf`, one line per managed port, e.g. `eth3 main=U 20=T 30=O`.
