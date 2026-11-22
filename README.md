@@ -90,6 +90,14 @@ to **only one** of them. Example: a NAS with two NICs on *10G* and *LAN2* – Ma
 LAN2 – never the same VLAN on both. Otherwise a bridge or Docker network on the device creates a loop and the whole
 network (LAN and Wi-Fi) drops out now and then.
 
+### AiMesh
+A LAN port with an AiMesh node behind it (wired backhaul, also via a switch) must stay at the ASUS default:
+Main untagged and all VLANs tagged. VLAN Matrix finds such ports by the node's MAC address and locks them – they are
+shown as **AiMesh**, greyed out like WAN, and never changed. Nodes with wireless backhaul need nothing.
+*Takeover* only resets this router's own ASUS port settings; the nodes keep theirs.
+The lock is remembered while the node is off. If you move or remove a node, unlock the old port with
+`vm.sh unprotect ethX`. Tested with a wired RT-AX3000 node and a wireless RP-BE58 node.
+
 ## Command line
 
 ```sh
